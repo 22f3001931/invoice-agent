@@ -1,0 +1,22 @@
+name = "invoice-agent"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[ai]
+binding = "AI"
+
+[[durable_objects.bindings]]
+name = "PRINCIPAL"
+class_name = "Principal"
+
+[[durable_objects.bindings]]
+name = "CACHE"
+class_name = "DecisionCache"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Principal", "DecisionCache"]
+
+[vars]
+BASE_PATH = "/a2a"
+MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
