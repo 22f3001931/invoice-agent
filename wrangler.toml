@@ -19,4 +19,7 @@ new_sqlite_classes = ["Principal", "DecisionCache"]
 
 [vars]
 BASE_PATH = "/a2a"
-MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+MODEL = "@cf/meta/llama-3.1-8b-instruct-fast"
+
+[observability]
+enabled = true
