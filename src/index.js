@@ -369,20 +369,16 @@ function validate(d, pkg) {
 
 async function modelDecide(env, pkgs) {
   const res = new Array(pkgs.length).fill(null);
-  const chunks = [];
-  for (let i = 0; i < pkgs.length; i += 12) chunks.push(Array.from({ length: Math.min(12, pkgs.length - i) }, (_, k) => i + k));
-  // One batched call per 12 packages.
-  await Promise.all(chunks.map(async (idxs) => {
-    const ds = await askModel(env, idxs.map((i) => pkgs[i]), 25000).catch(() => []);
+  const run = async (idxs, ms) => {
+    const ds = await askModel(env, idxs.map((i) => pkgs[i]), ms).catch((e) => { console.error('model', e && e.message); return []; });
     idxs.forEach((i, j) => { const v = validate(ds.find((x) => x && x.i === j), pkgs[i]); if (v) res[i] = v; });
-  }));
-  // Retry only the packages that failed validation, one at a time.
-  await Promise.all(res.map(async (d, i) => {
-    if (d) return;
-    const ds = await askModel(env, [pkgs[i]], 12000).catch(() => []);
-    const v = validate(ds.find((x) => x && x.i === 0), pkgs[i]);
-    if (v) res[i] = v;
-  }));
+  };
+  const all = pkgs.map((_, i) => i);
+  const chunks = [];
+  for (let i = 0; i < all.length; i += 12) chunks.push(all.slice(i, i + 12));
+  await Promise.all(chunks.map((c) => run(c, 18000)));            // first pass, one call per 12 packages
+  const failed = all.filter((i) => !res[i]);
+  if (failed.length) await run(failed.slice(0, 12), 8000);        // one batched retry, then fallback
   return res;
 }
 
@@ -394,7 +390,7 @@ const SYSTEM = `You are an accounts-payable analyst. For each invoice package ch
 - open_exception: material records conflict (invoice vs PO vs receipt vs contract, amount, currency, vendor identity) and need an exception workflow.
 Each package mixes the real case with noise: a cover sheet, archive examples, old cases, training decoys, negated statements ("do not hold...") and irrelevant action words. Find the ONE paragraph that actually determines the action for THIS invoice. evidenceRefs must be exactly the three bracketed references (like "[ABC-123]") that appear in that decisive paragraph, copied character for character. Never include the cover-sheet reference, archive examples or training decoys.
 Facts for the invoice being decided: vendorName, invoiceNumber, currency (ISO code) and amountMinor (integer minor units, e.g. 12,345.67 INR -> 1234567).
-reason: one or two sentences explaining the action.
+reason: at most 20 words explaining the action.
 Return JSON only: {"decisions":[{"i":<package index>,"action":...,"vendorName":...,"invoiceNumber":...,"amountMinor":...,"currency":...,"evidenceRefs":[...],"reason":...}]} with one entry per package.`;
 
 const SCHEMA = {
@@ -439,7 +435,7 @@ async function askModel(env, pkgs, ms) {
 
 async function workersAI(env, messages) {
   const model = env.MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-  const base = { messages, max_tokens: 4096, temperature: 0 };
+  const base = { messages, max_tokens: 2048, temperature: 0 };
   try {
     const r = await env.AI.run(model, { ...base, response_format: { type: 'json_schema', json_schema: SCHEMA } });
     return parseJson(r.response);
